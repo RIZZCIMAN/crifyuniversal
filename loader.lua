@@ -36,9 +36,10 @@ local ESPColorsList = {
 }
 local CurrentColorIndex = 1
 
--- Aimbot Settings
+-- Aimbot & Aimlock Settings
 local AimbotEnabled = false
 local AimbotAiming = false
+local AimlockTarget = nil
 local FOVRadius = 120
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
@@ -345,7 +346,7 @@ local UpdatesLabel = Instance.new("TextLabel")
 UpdatesLabel.Size = UDim2.new(0.9, 0, 0.9, 0)
 UpdatesLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
 UpdatesLabel.BackgroundTransparency = 1
-UpdatesLabel.Text = "Recent Updates:\n\n• Added Camera Aimbot + Dynamic FOV\n• Added 2D Box ESP (Square)\n• Added Name & Distance ESP\n• Added Line Tracers\n• Added ESP Color Customization"
+UpdatesLabel.Text = "Recent Updates:\n\n• Added R-Key Toggle Aimlock\n• Added Right-Click Hold Aimbot\n• Added Square 2D Box ESP\n• Added Name/Distance & Tracer Lines\n• Dynamic Target Locking Indicator"
 UpdatesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 UpdatesLabel.TextSize = 12
 UpdatesLabel.Font = Enum.Font.Gotham
@@ -538,12 +539,12 @@ local TeleportBtnCorner = Instance.new("UICorner")
 TeleportBtnCorner.CornerRadius = UDim.new(0, 6)
 TeleportBtnCorner.Parent = TeleportBtn
 
--- 5. COMBAT TAB (Aimbot)
+-- 5. COMBAT TAB (Aimbot & Aimlock)
 local AimbotBtn = Instance.new("TextButton")
 AimbotBtn.Size = UDim2.new(0.95, 0, 0, 36)
 AimbotBtn.Position = UDim2.new(0, 0, 0, 10)
 AimbotBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-AimbotBtn.Text = "Aimbot (Right Click): OFF"
+AimbotBtn.Text = "Aimbot System: OFF"
 AimbotBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 AimbotBtn.TextSize = 12
 AimbotBtn.Font = Enum.Font.GothamSemibold
@@ -553,9 +554,20 @@ local AimbotBtnCorner = Instance.new("UICorner")
 AimbotBtnCorner.CornerRadius = UDim.new(0, 6)
 AimbotBtnCorner.Parent = AimbotBtn
 
+local AimlockInfoLabel = Instance.new("TextLabel")
+AimlockInfoLabel.Size = UDim2.new(0.95, 0, 0, 20)
+AimlockInfoLabel.Position = UDim2.new(0, 0, 0, 52)
+AimlockInfoLabel.BackgroundTransparency = 1
+AimlockInfoLabel.Text = "Hold Right Click OR Press 'R' To Lock"
+AimlockInfoLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+AimlockInfoLabel.TextSize = 11
+AimlockInfoLabel.Font = Enum.Font.Gotham
+AimlockInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+AimlockInfoLabel.Parent = CombatTab
+
 local FOVLabel = Instance.new("TextLabel")
 FOVLabel.Size = UDim2.new(0.95, 0, 0, 20)
-FOVLabel.Position = UDim2.new(0, 0, 0, 60)
+FOVLabel.Position = UDim2.new(0, 0, 0, 80)
 FOVLabel.BackgroundTransparency = 1
 FOVLabel.Text = "Aimbot FOV Radius: " .. tostring(FOVRadius)
 FOVLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -566,7 +578,7 @@ FOVLabel.Parent = CombatTab
 
 local FOVSliderBacking = Instance.new("Frame")
 FOVSliderBacking.Size = UDim2.new(0.95, 0, 0, 8)
-FOVSliderBacking.Position = UDim2.new(0, 0, 0, 85)
+FOVSliderBacking.Position = UDim2.new(0, 0, 0, 105)
 FOVSliderBacking.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
 FOVSliderBacking.BorderSizePixel = 0
 FOVSliderBacking.Parent = CombatTab
@@ -583,7 +595,7 @@ FOVSliderFill.Parent = FOVSliderBacking
 
 local FOVSliderFillCorner = Instance.new("UICorner")
 FOVSliderFillCorner.CornerRadius = UDim.new(1, 0)
-FOVSliderFillCorner.Parent = FOVSliderFill
+FOVSliderFillCorner.Parent = FOVSliderBacking
 
 local FOVSliderBtn = Instance.new("TextButton")
 FOVSliderBtn.Size = UDim2.new(1, 0, 1, 0)
@@ -776,7 +788,6 @@ RunService.RenderStepped:Connect(function()
                 local height = math.abs(headPos.Y - legPos.Y)
                 local width = height / 1.5
 
-                -- BOX ESP
                 if BoxESP then
                     esp.Box.Size = Vector2.new(width, height)
                     esp.Box.Position = Vector2.new(pos.X - width / 2, pos.Y - height / 2)
@@ -786,7 +797,6 @@ RunService.RenderStepped:Connect(function()
                     esp.Box.Visible = false
                 end
 
-                -- NAME ESP
                 if NameESP then
                     esp.Name.Text = plr.DisplayName .. " [" .. math.floor((hrp.Position - RootPart.Position).Magnitude) .. "m]"
                     esp.Name.Position = Vector2.new(pos.X, pos.Y - height / 2 - 16)
@@ -796,7 +806,6 @@ RunService.RenderStepped:Connect(function()
                     esp.Name.Visible = false
                 end
 
-                -- LINE TRACERS
                 if LineESP then
                     esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                     esp.Line.To = Vector2.new(pos.X, pos.Y + height / 2)
@@ -819,7 +828,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- AIMBOT LOGIC
+-- AIMBOT & AIMLOCK LOGIC
 ------------------------------------------------------------------------
 
 local function GetClosestPlayer()
@@ -842,9 +851,25 @@ local function GetClosestPlayer()
     return closest
 end
 
-UserInputService.InputBegan:Connect(function(input)
+-- Key & Mouse Inputs for Aimbot/Aimlock
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         AimbotAiming = true
+    elseif input.KeyCode == Enum.KeyCode.R and AimbotEnabled then
+        if AimlockTarget then
+            AimlockTarget = nil
+            AimlockInfoLabel.Text = "Hold Right Click OR Press 'R' To Lock"
+            AimlockInfoLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+        else
+            local target = GetClosestPlayer()
+            if target then
+                AimlockTarget = target
+                AimlockInfoLabel.Text = "Locked On: " .. target.DisplayName
+                AimlockInfoLabel.TextColor3 = Color3.fromRGB(90, 105, 246)
+            end
+        end
     end
 end)
 
@@ -855,10 +880,22 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 RunService.RenderStepped:Connect(function()
-    if AimbotEnabled and AimbotAiming then
-        local target = GetClosestPlayer()
-        if target and target.Character and target.Character:FindFirstChild("Head") then
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+    if AimbotEnabled then
+        -- 1. Aimlock Mode (R Key)
+        if AimlockTarget then
+            if AimlockTarget.Character and AimlockTarget.Character:FindFirstChild("Head") and AimlockTarget.Character:FindFirstChild("Humanoid") and AimlockTarget.Character.Humanoid.Health > 0 then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, AimlockTarget.Character.Head.Position)
+            else
+                AimlockTarget = nil
+                AimlockInfoLabel.Text = "Hold Right Click OR Press 'R' To Lock"
+                AimlockInfoLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+            end
+        -- 2. Mouse Aim Mode (Right Click)
+        elseif AimbotAiming then
+            local target = GetClosestPlayer()
+            if target and target.Character and target.Character:FindFirstChild("Head") then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.Head.Position)
+            end
         end
     end
 end)
@@ -895,7 +932,12 @@ end)
 -- Aimbot Toggle
 AimbotBtn.MouseButton1Click:Connect(function()
     AimbotEnabled = not AimbotEnabled
-    AimbotBtn.Text = "Aimbot (Right Click): " .. (AimbotEnabled and "ON" or "OFF")
+    AimbotBtn.Text = "Aimbot System: " .. (AimbotEnabled and "ON" or "OFF")
+    if not AimbotEnabled then
+        AimlockTarget = nil
+        AimlockInfoLabel.Text = "Hold Right Click OR Press 'R' To Lock"
+        AimlockInfoLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
+    end
     TweenService:Create(AimbotBtn, TweenInfo.new(0.3), {BackgroundColor3 = AimbotEnabled and Color3.fromRGB(90, 105, 246) or Color3.fromRGB(30, 30, 36)}):Play()
 end)
 
